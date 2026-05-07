@@ -291,6 +291,8 @@ async function initGoogleDrive(){
         callback: (resp) => {
           if(resp.access_token){
             googleAccessToken = resp.access_token;
+            gapi.client.setToken({ access_token: googleAccessToken });
+            
             alert('Google Drive connecté.');
           }
         }
@@ -303,22 +305,40 @@ async function initGoogleDrive(){
 }
 
 async function ensureGoogleAuth(){
-  if(!googleInitialized){
-    await initGoogleDrive();
+  try {
+    if(!window.google || !window.google.accounts || !window.google.accounts.oauth2){
+      alert('Librairie Google Identity non chargée. Vérifie la connexion Internet et recharge la page.');
+      return false;
+    }
+
+    if(!window.gapi){
+      alert('Librairie Google API non chargée. Vérifie la connexion Internet et recharge la page.');
+      return false;
+    }
+
+    if(!googleInitialized){
+      await initGoogleDrive();
+    }
+
+    return new Promise((resolve) => {
+      googleTokenClient.callback = (resp) => {
+        if(resp && resp.access_token){
+          googleAccessToken = resp.access_token;
+          gapi.client.setToken({ access_token: googleAccessToken });
+          alert('Google Drive connecté.');
+          resolve(true);
+        } else {
+          alert('Connexion Google annulée ou refusée.');
+          resolve(false);
+        }
+      };
+
+      googleTokenClient.requestAccessToken({ prompt: 'consent' });
+    });
+  } catch(err) {
+    alert('Erreur connexion Google Drive : ' + err.message);
+    return false;
   }
-
-  return new Promise((resolve) => {
-    googleTokenClient.callback = (resp) => {
-      if(resp.access_token){
-        googleAccessToken = resp.access_token;
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    };
-
-    googleTokenClient.requestAccessToken();
-  });
 }
 
 async function findBackupFile(){
