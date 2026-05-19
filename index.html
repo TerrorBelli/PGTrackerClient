@@ -33,6 +33,66 @@
     /* Fix hauteur du graphique */
     #chart { height: 260px !important; }
     @media (min-width: 860px) { #chart { height: 320px !important; } }
+    #toastContainer{
+  position:fixed;
+  left:50%;
+  bottom:20px;
+  transform:translateX(-50%);
+  display:flex;
+  flex-direction:column;
+  gap:.6rem;
+  z-index:9999;
+  pointer-events:none;
+}
+
+.toast{
+  min-width:220px;
+  max-width:90vw;
+  background:#121a2b;
+  color:#e7eefc;
+  border:1px solid #243453;
+  border-radius:.9rem;
+  padding:.9rem 1rem;
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+  animation:toastIn .25s ease, toastOut .25s ease 3.75s forwards;
+  font-size:.95rem;
+}
+
+.toast.success{
+  border-color:#14532d;
+  background:#052e16;
+  color:#dcfce7;
+}
+
+.toast.error{
+  border-color:#7f1d1d;
+  background:#450a0a;
+  color:#fee2e2;
+}
+
+.toast.info{
+  border-color:#133a60;
+  background:#0c223a;
+  color:#dbeafe;
+}
+
+@keyframes toastIn{
+  from{
+    opacity:0;
+    transform:translateY(20px);
+  }
+  to{
+    opacity:1;
+    transform:translateY(0);
+  }
+}
+
+@keyframes toastOut{
+  to{
+    opacity:0;
+    transform:translateY(20px);
+  }
+}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://accounts.google.com/gsi/client"></script>
@@ -169,6 +229,19 @@
     let googleInitialized = false;
 
     const $ = (s,root=document) => root.querySelector(s);
+function toast(message, type='info'){
+  const container = $('#toastContainer');
+
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+
+  container.appendChild(el);
+
+  setTimeout(() => {
+    el.remove();
+  }, 4000);
+}
 
     function load(){ return JSON.parse(localStorage.getItem(KEY) || '{"medals":[]}') }
   let autoBackupTimer = null;
@@ -261,16 +334,16 @@ let currentMedalId = null;
           refreshSelect();
           refreshDashboard();
           show('viewDash');
-          alert('Import terminé. Données restaurées.');
+          toast('Import terminé. Données restaurées.', 'success');
         } catch (err) {
-          alert(`Import impossible : ${err.message}`);
+          toast(`Import impossible : ${err.message}`, 'error');
         } finally {
           $('#importJsonFile').value = '';
         }
       };
 
       reader.onerror = () => {
-        alert('Impossible de lire le fichier JSON.');
+        toast('Impossible de lire le fichier JSON.', 'error');
         $('#importJsonFile').value = '';
       };
 
@@ -293,7 +366,7 @@ async function initGoogleDrive(){
             googleAccessToken = resp.access_token;
             gapi.client.setToken({ access_token: googleAccessToken });
             
-            alert('Google Drive connecté.');
+            toast('Google Drive connecté.', 'success');
           }
         }
       });
@@ -307,12 +380,12 @@ async function initGoogleDrive(){
 async function ensureGoogleAuth(){
   try {
     if(!window.google || !window.google.accounts || !window.google.accounts.oauth2){
-      alert('Librairie Google Identity non chargée. Vérifie la connexion Internet et recharge la page.');
+      toast('Librairie Google Identity non chargée. Vérifie la connexion Internet et recharge la page.', 'error');
       return false;
     }
 
     if(!window.gapi){
-      alert('Librairie Google API non chargée. Vérifie la connexion Internet et recharge la page.');
+      toast('Librairie Google API non chargée. Vérifie la connexion Internet et recharge la page.', 'error');
       return false;
     }
 
@@ -325,10 +398,10 @@ async function ensureGoogleAuth(){
         if(resp && resp.access_token){
           googleAccessToken = resp.access_token;
           gapi.client.setToken({ access_token: googleAccessToken });
-          alert('Google Drive connecté.');
+          toast('Google Drive connecté.', 'success');
           resolve(true);
         } else {
-          alert('Connexion Google annulée ou refusée.');
+          toast('Connexion Google annulée ou refusée.', 'error');
           resolve(false);
         }
       };
@@ -336,7 +409,7 @@ async function ensureGoogleAuth(){
       googleTokenClient.requestAccessToken({ prompt: 'consent' });
     });
   } catch(err) {
-    alert('Erreur connexion Google Drive : ' + err.message);
+    toast('Erreur connexion Google Drive : ' + err.message, 'error');
     return false;
   }
 }
@@ -396,11 +469,11 @@ async function uploadBackupToDrive(){
   });
 
   if(!response.ok){
-    alert('Erreur sauvegarde Google Drive');
+    toast('Erreur sauvegarde Google Drive', 'error');
     return;
   }
 
-  alert('Sauvegarde Drive terminée.');
+  toast('Sauvegarde Drive terminée.', 'success');
 }
 
 async function restoreBackupFromDrive(){
@@ -412,7 +485,7 @@ async function restoreBackupFromDrive(){
   const existing = await findBackupFile();
 
   if(!existing){
-    alert('Aucune sauvegarde trouvée.');
+    toast('Aucune sauvegarde trouvée.', 'error');
     return;
   }
 
@@ -426,7 +499,7 @@ async function restoreBackupFromDrive(){
   );
 
   if(!response.ok){
-    alert('Impossible de télécharger la sauvegarde.');
+    toast('Impossible de télécharger la sauvegarde.', 'error');
     return;
   }
 
@@ -443,7 +516,7 @@ async function restoreBackupFromDrive(){
   refreshSelect();
   refreshDashboard();
 
-  alert('Restauration terminée.');
+  toast('Restauration terminée.', 'success');
   show('viewDash');
 } 
     // NAV
@@ -778,5 +851,6 @@ window.addEventListener('load', () => {
 });
 
   </script>
+  <div id="toastContainer"></div>
 </body>
 </html>
