@@ -710,7 +710,7 @@ if (tblEntries) {
       d.setDate(d.getDate() + days);
       return d.toISOString().slice(0,10);
     }
-
+// Rendu du graphique avec Chart.js
     function renderChart(m){
       const ctx = document.querySelector('#chart');
       const entries = ensureSorted(m.entries);
