@@ -192,6 +192,7 @@
   <input id="detailThreshold" type="number" step="1" style="width:200px" placeholder="Seuil (zéro du graphique)" />
   <button id="btnSaveTarget">Enregistrer</button>
   <button id="btnToggleScale">📏 Mode à l'échelle</button>
+  <button id="btnToggleFocus">🔍 Mode Focus</button>
   <button id="btnDeleteMedal" class="ghost" style="color:#fca5a5">Supprimer la médaille</button>
 </div>
       <canvas id="chart"></canvas>
@@ -698,6 +699,7 @@ if (tblEntries) {
     // DETAIL + CHART
     let chart=null;
     let chartScaleMode = 'regular'; // regular = points espacés régulièrement ; scale = espacement réel en jours
+    let focusMode = false; // focus = bornes Y ajustées sur min/max des données
 
     function daysBetween(startIso, endIso){
       return Math.round((new Date(endIso) - new Date(startIso)) / 86400000);
@@ -740,6 +742,14 @@ if (tblEntries) {
         plugins: { legend: { labels: { color: '#cfe6ff' } } }
       };
 
+      const dataValues = entries.map(e => e.value - base);
+      const yDataMin = Math.min(...dataValues);
+      const yDataMax = Math.max(...dataValues);
+      const yPadding = (yDataMax - yDataMin) * 0.05 || 1;
+      const yScaleOptions = focusMode
+        ? { min: Math.max(0, yDataMin - yPadding), max: yDataMax + yPadding }
+        : { beginAtZero: true, suggestedMax: yMax || undefined };
+
       if(chartScaleMode === 'scale'){
         const startIso = entries[0].date;
         const scaledData = entries.map(e => ({ x: daysBetween(startIso, e.date), y: e.value - base }));
@@ -760,8 +770,7 @@ if (tblEntries) {
                 }
               },
               y: {
-                beginAtZero: true,
-                suggestedMax: yMax || undefined,
+                ...yScaleOptions,
                 ticks: { color: '#9fb3d1' }
               }
             }
@@ -778,8 +787,7 @@ if (tblEntries) {
             scales: {
               x: { ticks: { color: '#9fb3d1' } },
               y: {
-                beginAtZero: true,
-                suggestedMax: yMax || undefined,
+                ...yScaleOptions,
                 ticks: { color: '#9fb3d1' }
               }
             }
@@ -790,6 +798,12 @@ if (tblEntries) {
       if(toggle){
         toggle.textContent = chartScaleMode === 'scale' ? '📊 Mode points réguliers' : '📏 Mode à l\'échelle';
         toggle.classList.toggle('active-toggle', chartScaleMode === 'scale');
+      }
+
+      const focusToggle = document.querySelector('#btnToggleFocus');
+      if(focusToggle){
+        focusToggle.textContent = focusMode ? '🔍 Focus : ON' : '🔍 Mode Focus';
+        focusToggle.classList.toggle('active-toggle', focusMode);
       }
     }
 
@@ -806,6 +820,11 @@ renderChart(m);
 
       document.querySelector('#btnToggleScale').onclick = () => {
         chartScaleMode = chartScaleMode === 'scale' ? 'regular' : 'scale';
+        renderChart(m);
+      };
+
+      document.querySelector('#btnToggleFocus').onclick = () => {
+        focusMode = !focusMode;
         renderChart(m);
       };
 
