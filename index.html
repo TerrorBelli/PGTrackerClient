@@ -32,7 +32,11 @@
     canvas { background:#081024; border-radius:.6rem; padding:.5rem }
     /* Fix hauteur du graphique */
     #chart { height: 260px !important; }
-    @media (min-width: 860px) { #chart { height: 320px !important; } }
+    #projectionChart { height: 260px !important; }
+    @media (min-width: 860px) { 
+      #chart { height: 320px !important; }
+      #projectionChart { height: 320px !important; }
+    }
     #toastContainer{
   position:fixed;
   left:50%;
@@ -127,7 +131,7 @@
         <button id="btnDriveRestore">♻️ Restaurer Drive</button>
         <input id="importJsonFile" type="file" accept="application/json,.json" hidden />
       </div>
-      <p class="muted">Toutes les données restent sur l’appareil (localStorage). Pense à exporter de temps en temps.</p>
+      <p class="muted">Toutes les données restent sur l'appareil (localStorage). Pense à exporter de temps en temps.</p>
     </section>
 
     <!-- CREATE -->
@@ -196,7 +200,10 @@
   <button id="btnDeleteMedal" class="ghost" style="color:#fca5a5">Supprimer la médaille</button>
 </div>
       <canvas id="chart"></canvas>
-     
+
+      <h3 style="margin-top:1rem">Projection des ETAs</h3>
+      <p class="muted">Chaque point = une saisie; l'ordonnée montre la date d'obtention prévue à ce moment.</p>
+      <canvas id="projectionChart"></canvas>
 
       <h3 style="margin-top:1rem">Historique des saisies</h3>
       <div style="overflow:auto; max-height:220px">
@@ -205,6 +212,9 @@
             <tr>
               <th>Date</th>
               <th class="right">Valeur</th>
+              <th class="right">Δ valeur</th>
+              <th>ETA à cette saisie</th>
+              <th class="right">Δ ETA (j)</th>
               <th class="right"></th>
             </tr>
           </thead>
@@ -589,34 +599,6 @@ async function restoreBackupFromDrive(){
       const last = m.entries[m.entries.length-1]; $('#inputHint').textContent = `Enregistré: ${last.value.toLocaleString('fr-FR')} le ${fmtDate(last.date)}`; $('#inpValue').min = last.value; $('#inpValue').value='';
     };
 
-function buildFullTimeline(entries) {
-  if (entries.length === 0) return { labels: [], data: [] };
-
-  const start = new Date(entries[0].date);
-  const end = new Date(entries[entries.length - 1].date);
-
-  const labels = [];
-  const data = [];
-
-  let lastValue = entries[0].value;
-  let idx = 0;
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const iso = d.toISOString().slice(0,10);
-    labels.push(iso);
-
-    // Si une entrée existe pour ce jour, on l’utilise
-    if (idx < entries.length && entries[idx].date === iso) {
-      lastValue = entries[idx].value;
-      idx++;
-    }
-
-    data.push(lastValue); // ou 0 si tu préfères
-  }
-
-  return { labels, data };
-}
-
     // DASH
     function refreshDashboard(){
       const tbody = document.querySelector('#tblDash tbody'); tbody.innerHTML='';
@@ -641,7 +623,7 @@ function buildFullTimeline(entries) {
         tbody.appendChild(tr);
       }
       if(!state.medals.length){
-        const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="8" class="small">Aucun objectif. Clique sur “Nouvel objectif”.</td>`; tbody.appendChild(tr);
+        const tr = document.createElement('tr'); tr.innerHTML = `<td colspan="8" class="small">Aucun objectif. Clique sur "Nouvel objectif".</td>`; tbody.appendChild(tr);
       }
       document.querySelector('#tblDash').onclick = (e)=>{ const id = e.target.getAttribute('data-open'); if(id) openDetail(id); };
     }
@@ -669,6 +651,33 @@ if (tblEntries) {
   });
 }
 
+    // Calculer stats (eta, rpd) pour chaque saisie, en utilisant les données jusqu'à ce point
+    function buildEntryStats(entries, target) {
+      const sorted = ensureSorted([...entries]);
+      return sorted.map((e, i) => {
+        if (i === 0) return { eta: null, rpd: 0 };
+        const partial = sorted.slice(0, i + 1);
+        const rpd = ratePerDay(partial);
+        const eta = projectionDate(e.value, target, rpd);
+        return { eta, rpd };
+      });
+    }
+
+    function buildProjectionData(entries, target) {
+      const sorted = ensureSorted([...entries]);
+      const stats = buildEntryStats(sorted, target);
+      const data = [];
+      for (let i = 0; i < sorted.length; i++) {
+        const eta = stats[i].eta;
+        if (!eta) continue;
+        data.push({
+          x: new Date(sorted[i].date).getTime(),
+          y: eta.getTime()
+        });
+      }
+      return data;
+    }
+
     function renderEntriesTable(m){
   const tbody = document.querySelector('#tblEntries tbody');
   if(!tbody) return;
@@ -678,16 +687,35 @@ if (tblEntries) {
 
   if(!entries.length){
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="3" class="small">Aucune saisie pour cette médaille.</td>`;
+    tr.innerHTML = `<td colspan="6" class="small">Aucune saisie pour cette médaille.</td>`;
     tbody.appendChild(tr);
     return;
   }
 
+  // Calculer les stats (ETA) pour chaque saisie
+  const stats = buildEntryStats(entries, m.target);
+
   entries.forEach((e, idx) => {
+    const prevVal  = idx > 0 ? entries[idx - 1].value : null;
+    const deltaVal = prevVal !== null ? (e.value - prevVal) : null;
+    const eta      = stats[idx].eta;
+    const prevEta  = idx > 0 ? stats[idx - 1].eta : null;
+    const deltaEta = (eta && prevEta) ? Math.round((eta.getTime() - prevEta.getTime()) / 86400000) : null;
+
+    const deltaValStr = deltaVal === null ? '—'
+      : (deltaVal > 0 ? '+' : '') + deltaVal.toLocaleString('fr-FR');
+    const etaStr = eta ? fmtDate(eta) : '—';
+    const deltaEtaStr = deltaEta === null ? '—'
+      : (deltaEta > 0 ? '+' : '') + deltaEta + ' j';
+    const deltaEtaColor = deltaEta === null ? '' : deltaEta < 0 ? 'color:#86efac' : deltaEta > 0 ? 'color:#fca5a5' : '';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${fmtDate(e.date)}</td>
       <td class="right">${(+e.value).toLocaleString('fr-FR')}</td>
+      <td class="right small">${deltaValStr}</td>
+      <td class="small">${etaStr}</td>
+      <td class="right small" style="${deltaEtaColor}">${deltaEtaStr}</td>
       <td class="right">
         <button class="ghost small-btn" data-del-entry="${idx}">Supprimer</button>
       </td>
@@ -698,6 +726,7 @@ if (tblEntries) {
 
     // DETAIL + CHART
     let chart=null;
+    let projectionChart=null;
     let chartScaleMode = 'regular'; // regular = points espacés régulièrement ; scale = espacement réel en jours
     let focusMode = false; // focus = bornes Y ajustées sur min/max des données
 
@@ -710,6 +739,79 @@ if (tblEntries) {
       d.setDate(d.getDate() + days);
       return d.toISOString().slice(0,10);
     }
+
+
+    function renderProjectionChart(m) {
+      const ctx = document.querySelector('#projectionChart');
+      if (!ctx) return;
+      if (projectionChart) { projectionChart.destroy(); projectionChart = null; }
+
+      const entries = ensureSorted(m.entries);
+      if (entries.length < 2) return;
+
+      const projData = buildProjectionData(entries, m.target);
+      if (!projData.length) return;
+
+      const etaValues = projData.map(d => d.y);
+      const xValues   = projData.map(d => d.x);
+      const minEta = Math.min(...etaValues);
+      const maxEta = Math.max(...etaValues);
+      const minX   = Math.min(...xValues);
+      const maxX   = Math.max(...xValues);
+      const padY   = Math.max((maxEta - minEta) * 0.08, 86400000 * 5);
+      const padX   = Math.max((maxX - minX) * 0.05, 86400000);
+
+      projectionChart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+          datasets: [{
+            label: "Evolution de l'ETA",
+            data: projData,
+            borderColor: '#9cd7ff',
+            backgroundColor: '#1d4ed8',
+            borderWidth: 2,
+            pointRadius: 5,
+            pointHoverRadius: 8,
+            showLine: true,
+            tension: 0.2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          plugins: {
+            legend: { labels: { color: '#cfe6ff' } },
+            tooltip: {
+              callbacks: {
+                label: function(ctx) {
+                  var saisie = fmtDate(new Date(ctx.parsed.x));
+                  var eta    = fmtDate(new Date(ctx.parsed.y));
+                  return 'Saisie du ' + saisie + ' -> ETA : ' + eta;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              min: minX - padX,
+              max: maxX + padX,
+              ticks: { color: '#9fb3d1', maxTicksLimit: 8, callback: function(v){ return fmtDate(new Date(v)); } },
+              title: { display: true, text: 'Date de saisie', color: '#9fb3d1' }
+            },
+            y: {
+              type: 'linear',
+              min: minEta - padY,
+              max: maxEta + padY,
+              ticks: { color: '#9fb3d1', maxTicksLimit: 8, callback: function(v){ return fmtDate(new Date(v)); } },
+              title: { display: true, text: 'Date previsionnelle (ETA)', color: '#9fb3d1' }
+            }
+          }
+        }
+      });
+    }
+
 // Rendu du graphique avec Chart.js
     function renderChart(m){
       const ctx = document.querySelector('#chart');
@@ -816,7 +918,9 @@ if (tblEntries) {
       const entries = ensureSorted(m.entries);
       const cur = entries.length? entries[entries.length-1].value : 0;
       document.querySelector('#detailMeta').textContent = entries.length? `Dernière valeur : ${cur.toLocaleString('fr-FR')} le ${fmtDate(entries[entries.length-1].date)} (${entries.length} relevés)` : 'Aucune donnée pour le moment';
-renderChart(m);
+      
+      renderChart(m);
+      renderProjectionChart(m);
 
       document.querySelector('#btnToggleScale').onclick = () => {
         chartScaleMode = chartScaleMode === 'scale' ? 'regular' : 'scale';
@@ -828,7 +932,7 @@ renderChart(m);
         renderChart(m);
       };
 
-renderEntriesTable(m)
+      renderEntriesTable(m)
       const rpd = ratePerDay(entries);
       const eta = projectionDate(cur, m.target, rpd);
       document.querySelector('#detailFooter').innerHTML = `Vitesse estimée : <strong>${rpd>0? rpd.toFixed(2): '—'}</strong> / jour · Objectif : <strong>${(+m.target).toLocaleString('fr-FR')}</strong> · ETA : <strong>${eta? eta.toLocaleDateString('fr-FR', {year:'numeric', month:'short', day:'2-digit'}): '—'}</strong>`;
