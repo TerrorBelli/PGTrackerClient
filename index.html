@@ -752,52 +752,42 @@ if (tblEntries) {
       const projData = buildProjectionData(entries, m.target);
       if (!projData.length) return;
 
+      // Bar chart: labels = dates de saisie (string), data = timestamps ETA
+      const labels   = projData.map(d => fmtDate(new Date(d.x)));
       const etaValues = projData.map(d => d.y);
-      const xValues   = projData.map(d => d.x);
       const minEta = Math.min(...etaValues);
       const maxEta = Math.max(...etaValues);
-      const minX   = Math.min(...xValues);
-      const maxX   = Math.max(...xValues);
       const padY   = Math.max((maxEta - minEta) * 0.08, 86400000 * 5);
-      const padX   = Math.max((maxX - minX) * 0.05, 86400000);
 
       projectionChart = new Chart(ctx, {
-        type: 'scatter',
+        type: 'bar',
         data: {
+          labels: labels,
           datasets: [{
-            label: "Evolution de l'ETA",
-            data: projData,
+            label: "ETA previsionnelle",
+            data: etaValues,
+            backgroundColor: 'rgba(14,165,233,0.55)',
             borderColor: '#9cd7ff',
-            backgroundColor: '#1d4ed8',
-            borderWidth: 2,
-            pointRadius: 5,
-            pointHoverRadius: 8,
-            showLine: true,
-            tension: 0.2
+            borderWidth: 1,
+            borderRadius: 4
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          parsing: false,
           plugins: {
             legend: { labels: { color: '#cfe6ff' } },
             tooltip: {
               callbacks: {
                 label: function(ctx) {
-                  var saisie = fmtDate(new Date(ctx.parsed.x));
-                  var eta    = fmtDate(new Date(ctx.parsed.y));
-                  return 'Saisie du ' + saisie + ' -> ETA : ' + eta;
+                  return 'ETA : ' + fmtDate(new Date(ctx.parsed.y));
                 }
               }
             }
           },
           scales: {
             x: {
-              type: 'linear',
-              min: minX - padX,
-              max: maxX + padX,
-              ticks: { color: '#9fb3d1', maxTicksLimit: 8, callback: function(v){ return fmtDate(new Date(v)); } },
+              ticks: { color: '#9fb3d1', maxRotation: 45 },
               title: { display: true, text: 'Date de saisie', color: '#9fb3d1' }
             },
             y: {
