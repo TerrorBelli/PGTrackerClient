@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96" />
-<link rel="icon" type="image/svg+xml" href="favicon.svg" />
-<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
-<link rel="manifest" href="site.webmanifest" />
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PG Tracker – Pokémon GO</title>
   <meta name="theme-color" content="#0ea5e9" />
+  <link rel="icon" type="image/png" href="favicon-96x96.png" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="manifest" href="site.webmanifest" />
   <style>
     :root { --bg:#0b1020; --panel:#121a2b; --muted:#93a5c0; --text:#e7eefc; --accent:#0ea5e9; }
     *{box-sizing:border-box}
@@ -846,12 +846,54 @@ if (tblEntries) {
         ? { min: Math.max(0, yDataMin - yPadding), max: yDataMax + yPadding }
         : { beginAtZero: true, suggestedMax: yMax || undefined };
 
+      // Vitesse/jour recalculée à chaque saisie (via buildEntryStats)
+      const stats = buildEntryStats(entries, m.target);
+      const rpdData = stats.map(s => s.rpd > 0 ? +s.rpd.toFixed(3) : null);
+      const rpdMax = Math.max(...rpdData.filter(v => v !== null), 0);
+
+      const rpdDataset = {
+        label: 'Vitesse (unités/jour)',
+        data: rpdData,
+        yAxisID: 'yRpd',
+        type: 'line',
+        tension: 0.3,
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245,158,11,0.15)',
+        borderWidth: 2,
+        borderDash: [5, 3],
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        fill: false,
+        spanGaps: true
+      };
+
+      const yLeftScale = {
+        type: 'linear',
+        position: 'left',
+        ...yScaleOptions,
+        ticks: { color: '#9fb3d1' }
+      };
+
+      const yRpdScale = {
+        type: 'linear',
+        position: 'right',
+        min: 0,
+        suggestedMax: rpdMax * 1.2 || 1,
+        grid: { drawOnChartArea: false },
+        ticks: { color: '#f59e0b', callback: v => v.toFixed(1) },
+        title: { display: true, text: 'Unités / jour', color: '#f59e0b' }
+      };
+
       if(chartScaleMode === 'scale'){
         const startIso = entries[0].date;
         const scaledData = entries.map(e => ({ x: daysBetween(startIso, e.date), y: e.value - base }));
+        const scaledRpd  = entries.map((e, i) => ({ x: daysBetween(startIso, e.date), y: rpdData[i] }));
         chart = new Chart(ctx, {
           type: 'line',
-          data: { datasets: [{ label: `${m.name} — échelle réelle`, data: scaledData, tension: .25 }] },
+          data: { datasets: [
+            { label: `${m.name} — échelle réelle`, data: scaledData, tension: .25, yAxisID: 'y', borderColor: '#0ea5e9', backgroundColor: 'rgba(14,165,233,0.1)', fill: false },
+            { ...rpdDataset, data: scaledRpd }
+          ]},
           options: {
             ...commonOptions,
             parsing: false,
@@ -865,10 +907,8 @@ if (tblEntries) {
                   callback: value => fmtDate(isoPlusDays(startIso, value))
                 }
               },
-              y: {
-                ...yScaleOptions,
-                ticks: { color: '#9fb3d1' }
-              }
+              y: yLeftScale,
+              yRpd: yRpdScale
             }
           }
         });
@@ -877,15 +917,16 @@ if (tblEntries) {
         const data = entries.map(e => e.value - base);
         chart = new Chart(ctx, {
           type: 'line',
-          data: { labels, datasets: [{ label: m.name, data, tension: .25 }] },
+          data: { labels, datasets: [
+            { label: m.name, data, tension: .25, yAxisID: 'y', borderColor: '#0ea5e9', backgroundColor: 'rgba(14,165,233,0.1)', fill: false },
+            rpdDataset
+          ]},
           options: {
             ...commonOptions,
             scales: {
               x: { ticks: { color: '#9fb3d1' } },
-              y: {
-                ...yScaleOptions,
-                ticks: { color: '#9fb3d1' }
-              }
+              y: yLeftScale,
+              yRpd: yRpdScale
             }
           }
         });
